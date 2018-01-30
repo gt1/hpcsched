@@ -17,6 +17,8 @@
 */
 #include <config.h>
 
+#include <regex>
+
 #include <libmaus2/util/CommandContainer.hpp>
 #include <libmaus2/util/ArgParser.hpp>
 #include <libmaus2/util/ArgInfo.hpp>
@@ -43,6 +45,40 @@ static uint64_t getDefaultLinesPerPack()
 static std::string getDefaultD(libmaus2::util::ArgParser const & arg)
 {
 	return libmaus2::util::ArgInfo::getDefaultTmpFileName(arg.progname);
+}
+
+static uint64_t getDefaultMaxTry()
+{
+	return 2;
+}
+
+static uint64_t checkMaxTry(std::string const & s)
+{
+	std::regex R("\\{\\{maxtry(\\d+)\\}\\}");
+
+	std::smatch sm;
+	if ( ::std::regex_search(s, sm, R) )
+	{
+		std::istringstream istr(sm[1]);
+		uint64_t i;
+		istr >> i;
+
+		if ( istr && istr.peek() == std::istream::traits_type::eof() )
+		{
+			return i;
+		}
+		else
+		{
+			libmaus2::exception::LibMausException lme;
+			lme.getStream() << "[E] cannot parse maxtry parameter in " << s << std::endl;
+			lme.finish();
+			throw lme;
+		}
+	}
+	else
+	{
+		return getDefaultMaxTry();
+	}
 }
 
 std::string which(std::string const prog)
@@ -113,7 +149,7 @@ ContainerInfo handle(libmaus2::util::TempFileNameGenerator & tgen, std::vector<s
 	CN.id = cnid;
 	CN.depid = depid;
 	CN.attempt = 0;
-	CN.maxattempt = 2;
+	CN.maxattempt = checkMaxTry(sid);
 
 	bool ignorefail = false;
 
