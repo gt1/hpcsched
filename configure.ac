@@ -41,6 +41,20 @@ CXXFLAGS=""
 AC_PROG_CXX
 CXXFLAGS="${CXXFLAGS_SAVE}"
 
+if test \( ! -z "${GXX}" \) -a \( "${GXX}" = "yes" \) ; then
+	GCC_VERSION=$(LC_ALL=C ${CXX} -v 2>&1 | awk '/gcc version/ {print $3}')
+	GCC_VERSION_MAJOR=$(echo $GCC_VERSION | cut -d'.' -f1)
+	GCC_VERSION_MINOR=$(echo $GCC_VERSION | cut -d'.' -f2)
+	GCC_VERSION_PATCH=$(echo $GCC_VERSION | cut -d'.' -f3)
+	AC_MSG_NOTICE([Found GNU c++ compiler ${GXX} version ${GCC_VERSION} major ${GCC_VERSION_MAJOR} minor ${GCC_VERSION_MINOR} patch level ${GCC_VERSION_PATCH}])
+
+	if test \( ${GCC_VERSION_MAJOR} -lt 4 \) ; then
+		AC_MSG_ERROR([GNU compiler version not supported (broken regex support).])
+	elif test \( ${GCC_VERSION_MAJOR} -eq 4 \) -a \( ${GCC_VERSION_MINOR} -lt 9 \) ; then
+		AC_MSG_ERROR([GNU compiler version not supported (broken regex support).])
+	fi
+fi
+
 if test "${debug}" = "yes" ; then
 	CXXDEBUGFLAGS="-g -O0 -rdynamic"
 	CDEBUGFLAGS="-g -O0 -rdynamic"
