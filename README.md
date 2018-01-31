@@ -15,6 +15,20 @@ result_d: result_b result_c
 	prog_d
 ```
 
+The file consists of a set of rules. Each rule has the syntax
+
+```
+result_1 result_2 ... : dependency_1 dependency_2 ...
+<tab>prog1 prog1_arg1 prog1_arg2
+<tab>prog2 prog2_arg1 prog2_arg2
+```
+
+This denotes that the rule can only be started if dependency_1, dependency_2
+etc have been finished. The rule produces result_1, result_2 etc. The
+computations for producing the results are performed by executing the lines
+below the dependencies and results line which start with a tab symbol up to
+the start of the next rule.
+
 The dependency graph for this file is depicted below:
 
 ![Image of dependency graph](https://raw.githubusercontent.com/gt1/hpcsched/master/doc/depgraph.svg?sanitize=true)
@@ -37,6 +51,15 @@ text_c: text_a text_b
 This first produces a file text_a.txt containing `Hello A` and file text_b.txt
 containing `Hello B`. When both have been produced then they are
 concatenated to a file text_c.txt.
+
+For processing the text based control file first needs to be transformed
+into an intermediate format by running
+
+```
+hpschedmake Makefile
+```
+
+This may fail if the syntax 
 
 Source
 ------
