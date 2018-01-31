@@ -1,0 +1,6 @@
+digraph {
+	result_a -> result_b
+	result_a -> result_c
+	result_b -> result_d
+	result_c -> result_d
+}
