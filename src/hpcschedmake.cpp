@@ -318,7 +318,6 @@ std::vector<Rule> parseFile(std::string const fn)
 				if ( s.size() >= flagprefix.size() && s.substr(0,flagprefix.size()) == flagprefix )
 				{
 					std::string const f = s.substr(flagprefix.size());
-					// std::cerr << "flags:\t" << f << std::endl;
 
 					ignorefail = false;
 					deepsleep = false;
@@ -487,7 +486,6 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		C.completed = false;
 		C.ignorefail = R.ignorefail;
 		C.deepsleep = R.deepsleep;
-		// CN.V[i] = C;
 
 		libmaus2::util::CommandContainer CN;
 		CN.id = id;
@@ -531,13 +529,9 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 	libmaus2::util::ContainerDescriptionList CDL;
 	for ( uint64_t id = 0; id < VCC.size(); ++id )
 	{
-		// std::cerr << VCC[id] << std::endl;
-
 		std::ostringstream ostr;
 		ostr << tgen.getFileName() << ".cc";
 		std::string const fn = ostr.str();
-
-		// VFN.push_back(fn);
 
 		libmaus2::aio::OutputStreamInstance OSI(fn);
 		VCC[id].serialise(OSI);
