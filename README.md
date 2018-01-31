@@ -37,3 +37,31 @@ text_c: text_a text_b
 This first produces a file text_a.txt containing `Hello A` and file text_b.txt
 containing `Hello B`. When both have been produced then they are
 concatenated to a file text_c.txt.
+
+Source
+------
+
+The hpcsched source code is hosted on github:
+
+	git@github.com:gt1/hpcsched.git
+
+Release packages can be found at
+
+	https://github.com/gt1/hpcsched/releases
+
+Please make sure to choose a package containing the word "release" in it's name if you
+intend to compile hpcsched for production (i.e. non development) use.
+
+Compilation of hpcsched
+-------------------------
+
+hpcsched needs libmaus2 [https://github.com/gt1/libmaus2] . When libmaus2
+is installed in ${LIBMAUSPREFIX} then hpcsched can be compiled and
+installed in ${HOME}/hpcsched using
+
+	- autoreconf -i -f
+	- ./configure --with-libmaus2=${LIBMAUSPREFIX} \
+		--prefix=${HOME}/hpcsched
+	- make install
+
+The release packages come with a configure script included (making the autoreconf call unnecessary for source obtained via one of those).
