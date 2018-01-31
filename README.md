@@ -14,3 +14,4 @@ result_c: result_a
 result_d: result_b result_c
     prog_d
 ```
+![Image of dependency graph](https://raw.githubusercontent.com/gt1/hpcsched/master/doc/depgraph.svg)
