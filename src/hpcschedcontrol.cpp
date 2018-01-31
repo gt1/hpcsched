@@ -1438,8 +1438,11 @@ struct SlurmControl
 	}
 };
 
-int slurmcontrol(libmaus2::util::ArgParser const & arg)
+int hpcschedcontrol(libmaus2::util::ArgParser const & arg)
 {
+	std::string const hpcschedworker = which("hpcschedworker");
+	std::cerr << "[V] found hpcschedworker at " << hpcschedworker << std::endl;
+
 	std::string const tmpfilebase = arg.uniqueArgPresent("T") ? arg["T"] : libmaus2::util::ArgInfo::getDefaultTmpFileName(arg.progname);
 	uint64_t const workertime = arg.uniqueArgPresent("workertime") ? arg.getParsedArg<uint64_t>("workertime") : 1440;
 	uint64_t const workermem = arg.uniqueArgPresent("workermem") ? arg.getParsedArg<uint64_t>("workermem") : 40000;
@@ -1488,7 +1491,7 @@ int main(int argc, char * argv[])
 			return EXIT_FAILURE;
 		}
 
-		int const r = slurmcontrol(arg);
+		int const r = hpcschedcontrol(arg);
 
 		return r;
 	}
