@@ -313,7 +313,7 @@ std::vector<Rule> parseFile(std::string const fn)
 			// comment
 			else if ( s[0] == '#' )
 			{
-				std::string const flagprefix = "#{{hpcscheflags}}";
+				std::string const flagprefix = "#{{hpcschedflags}}";
 
 				if ( s.size() >= flagprefix.size() && s.substr(0,flagprefix.size()) == flagprefix )
 				{
