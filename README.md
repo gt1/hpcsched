@@ -1,2 +1,3 @@
 # hpcsched
-HPC job dependency scheduler
+hpcsched is a HPC job scheduler supporting job dependencies.
+
