@@ -6,13 +6,13 @@ An abstract example control file is
 
 ```
 result_a:
-    prog_a
+	prog_a
 result_b: result_a
-    prog_b
+	prog_b
 result_c: result_a
-    prog_c
+	prog_c
 result_d: result_b result_c
-    prog_d
+	prog_d
 ```
 
 The dependency graph for this file is depicted below:
@@ -27,9 +27,13 @@ A concrete toy example is
 
 ```
 text_a:
-    echo "Hello A" > text_a.txt
+	echo "Hello A" > text_a.txt
 text_b:
-    echo "Hello B" > text_b.txt
+	echo "Hello B" > text_b.txt
 text_c: text_a text_b
-    cat text_a.txt text_b.txt > text_c.txt
+	cat text_a.txt text_b.txt > text_c.txt
 ```
+
+This first produces a file text_a.txt containing `Hello A` and file text_b.txt
+containing `Hello B`. When both have been produced then they are
+concatenated to a file text_c.txt.
