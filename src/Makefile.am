@@ -13,7 +13,7 @@ data_DATA = derive.rc
 EXTRA_DIST = ${MANPAGES} derive.rc
 EXTRA_PROGRAMS =
 
-bin_PROGRAMS = commandderive commandpack  hpcschedcontrol hpcschedworker showcdl
+bin_PROGRAMS = commandderive commandpack hpcschedcontrol hpcschedmake hpcschedworker showcdl
 
 commandderive_SOURCES = commandderive.cpp
 commandderive_LDADD = ${LIBMAUS2LIBS}
@@ -29,6 +29,11 @@ hpcschedcontrol_SOURCES = hpcschedcontrol.cpp which.cpp runProgram.cpp
 hpcschedcontrol_LDADD = ${LIBMAUS2LIBS}
 hpcschedcontrol_LDFLAGS = ${AM_CPPFLAGS} ${LIBMAUS2CPPFLAGS} ${LIBMAUS2LDFLAGS} ${AM_LDFLAGS}
 hpcschedcontrol_CPPFLAGS = ${AM_CPPFLAGS} ${LIBMAUS2CPPFLAGS}
+
+hpcschedmake_SOURCES = hpcschedmake.cpp which.cpp runProgram.cpp
+hpcschedmake_LDADD = ${LIBMAUS2LIBS}
+hpcschedmake_LDFLAGS = ${AM_CPPFLAGS} ${LIBMAUS2CPPFLAGS} ${LIBMAUS2LDFLAGS} ${AM_LDFLAGS}
+hpcschedmake_CPPFLAGS = ${AM_CPPFLAGS} ${LIBMAUS2CPPFLAGS}
 
 hpcschedworker_SOURCES = hpcschedworker.cpp which.cpp runProgram.cpp
 hpcschedworker_LDADD = ${LIBMAUS2LIBS}
