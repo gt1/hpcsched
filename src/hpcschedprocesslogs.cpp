@@ -78,7 +78,7 @@ int processlogs(libmaus2::util::ArgParser const & arg)
 std::string getUsage(libmaus2::util::ArgParser const & arg)
 {
 	std::ostringstream ostr;
-	ostr << "usage: " << arg.progname << " <cdl>";
+	ostr << "usage: " << arg.progname << " <cdl>" << std::endl;
 	return ostr.str();
 }
 
