@@ -94,7 +94,8 @@ std::ostream & operator<<(std::ostream & out, CommandContainerView const & C)
 {
 	for ( uint64_t i = 0; i < C.VCC.size(); ++i )
 	{
-		out << "CommandContainer[" << i << "]=" << C.VCC[i] << " isComplete=" << C.VCC[i].isComplete() << " isFinished=" << C.VCC[i].isFinished() << std::endl;
+		out << "CommandContainer[" << i << "]=" << C.VCC[i];
+		out << "CommandContainerInfo[" << i << "]= isComplete=" << C.VCC[i].isComplete() << " isFinished=" << C.VCC[i].isFinished() << std::endl;
 	}
 
 	out << "CommandContainer[*] isComplete=" << C.isComplete() << " isFinished=" << C.isFinished() << std::endl;
