@@ -230,10 +230,10 @@ std::string getUsage(libmaus2::util::ArgParser const & arg)
 	ostr << "parameters:\n";
 	ostr << " -t          : number of threads (defaults to number of cores on machine)\n";
 	ostr << " -T          : prefix for temporary files (default: create files in current working directory)\n";
-	ostr << " -workertime : time for workers in (default: 1440)\n";
-	ostr << " -workermem  : memory for workers (default: 40000)\n";
-	ostr << " -partition  : cluster partition (default: haswell)\n";
-	ostr << " -workers    : number of workers (default: 16)\n";
+	ostr << " --workertime: time for workers in (default: 1440)\n";
+	ostr << " --workermem : memory for workers (default: 40000)\n";
+	ostr << " -p          : cluster partition (default: haswell)\n";
+	ostr << " --workers   : number of workers (default: 16)\n";
 
 	return ostr.str();
 }
