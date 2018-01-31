@@ -27,7 +27,8 @@ This denotes that the rule can only be started if dependency_1, dependency_2
 etc have been finished. The rule produces result_1, result_2 etc. The
 computations for producing the results are performed by executing the lines
 below the dependencies and results line which start with a tab symbol up to
-the start of the next rule.
+the start of the next rule. Comments can be inserted as lines starting with
+the # symbol.
 
 The dependency graph for this file is depicted below:
 
@@ -59,7 +60,80 @@ into an intermediate format by running
 hpschedmake Makefile
 ```
 
-This may fail if the syntax 
+This may fail if the syntax in Makefile is not recognized. If the processing
+is succesful than the name of a binary control file is printed on the
+standard output channel. An example run is
+
+```
+$ hpcschedmake Makefile
+hpcschedmake_node_26769_1517412398/00/00/00/00/file04.cdl
+```
+
+The prefix used for temporary files by hpcschedmake can be set using the -T
+switch, e.g.
+
+```
+hpcschedmake -Ttmpdir Makefile
+```
+
+The intermediate form stores various pieces of information about the
+progress reached so far. Processing on an HPC system can be started using
+
+```
+hpcschedcontrol hpcschedmake_node_26769_1517412398/00/00/00/00/file04.cdl
+```
+
+where `hpcschedmake_node_26769_1517412398/00/00/00/00/file04.cdl` is the
+file name reported by hpcschedmake. Note that hpcschedcontrol only supports
+the SLURM batch system so far. When hpcschedcontrol is run, then
+hpcschedworker needs to be available in the users path via setting the PATH
+variable accordingly. hpcschedcontrol has several options for controlling
+its behaviour:
+
+* -T: prefix used for temporary files (example: -Ttmpdir)
+* --workertime: run-time limit used for starting jobs via the batch system (example: --workertime720, by default this is --workertime1440)
+* --workermem: memory limit used when starting jobs (example: --workermem1000, by default this is --workermem40000). This value overides memory values provided via the config file (see below)
+* --workers: number of worker processes started. hpcschedcontrol manages a pool of worker jobs of this size.
+* -p: partition name in batch system used for starting jobs (-phaswell by default)
+
+Note that white space is not supported between the argument name and its
+value (i.e. `--workertime100` is valid, `--workertime 100` is not).
+
+hpcschedcontrol prints progress information on the standard error channel
+while it runs. After is has finished the set of log files produced by the
+jobs can be stored inside a tar file using e.g.
+
+```
+hpcschedprocesslogs hpcschedmake_node_26769_1517412398/00/00/00/00/file04.cdl
+```
+
+This will produce a tar file named hpcschedmake_node_26769_1517412398/00/00/00/00/file04.cdl.log.tar.
+This tar file contains a file containing the output and error channel for
+each job run as well as a file containing the return status.
+
+hpcschedcontrol checks the return status of each job run to detect whether a
+rule was executed successfully. Success is assumed if that return status is
+0, any other return code will be considered as a failed run. A failed run
+will be retried a given number of times (see below) before hpcschedcontrol
+considers the whole pipeline as failed.
+
+Additional options for running commands in rules can be given using comment
+lines starting with `#{{hpcschedflags}}` in the input file passed to
+hpcschedmake. An example is
+
+```
+#{{hpcschedflags}} {{maxtry5}} {{mem2000}}
+```
+
+The values set in such a line are used starting from that line up to the
+point the next line starting by `#{{hpcschedflags}}` is encountered.
+Possible arguments are
+
+* maxtry<int>: maximum number of times a job is retried before it is marked as failed permanently
+* mem<int>: memory parameter passed on to the batch system
+* threads<int>: number of threads requested from the batch system for running jobs
+* ignorefail: consider job as finished successfully even if it has failed the maximal number of tries
+* deepsleep: terminate unused worker processes if only jobs marked as deepsleep are running or ready to run. The terminated worker processes will be restarted once new jobs become available. This setting is useful to avoid processes which are idle for a long time.
 
 Source
 ------
