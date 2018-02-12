@@ -37,16 +37,16 @@ int processlogs(libmaus2::util::ArgParser const & arg)
 {
 	std::string const cdl = arg[0];
 	std::string const cdlmeta = cdl + ".meta";
-	
+
 	if ( libmaus2::util::GetFileSize::fileExists(cdlmeta) )
 	{
 		std::string const logtar = cdl + ".log.tar";
 		libmaus2::util::TarWriter TW(logtar);
-		
+
 		libmaus2::aio::InputStreamInstance ISI(cdlmeta);
-		
+
 		std::map < std::pair<uint64_t,uint64_t>, uint64_t > IDM;
-		
+
 		while ( ISI && ISI.peek() != std::istream::traits_type::eof() )
 		{
 			RunInfo RI;
@@ -55,17 +55,17 @@ int processlogs(libmaus2::util::ArgParser const & arg)
 			libmaus2::autoarray::AutoArray<char> Aout(libmaus2::autoarray::AutoArray<char>::readFilePortion(RI.outfn,RI.outstart,RI.outend-RI.outstart));
 			libmaus2::autoarray::AutoArray<char> Aerr(libmaus2::autoarray::AutoArray<char>::readFilePortion(RI.errfn,RI.errstart,RI.errend-RI.errstart));
 			int const status = RI.status;
-			
+
 			uint64_t const fid = IDM[std::pair<uint64_t,uint64_t>(RI.containerid,RI.subid)]++;
-			
+
 			std::ostringstream fnostr;
-			
+
 			fnostr << "log_" << RI.containerid << "_" << RI.subid << "_" << fid;
 			std::string const fnpref = fnostr.str();
-			
+
 			std::ostringstream statusstr;
 			statusstr << status;
-			
+
 			TW.addFile(fnpref + ".out", std::string(Aout.begin(),Aout.end()));
 			TW.addFile(fnpref + ".err", std::string(Aerr.begin(),Aerr.end()));
 			TW.addFile(fnpref + ".status", statusstr.str());
