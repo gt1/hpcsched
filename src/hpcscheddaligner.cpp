@@ -35,8 +35,8 @@ int main(int argc, char * argv[])
 		int optargc = argc;
 		char ** optargv = argv;
 		int opt = -1;
-		uint64_t numthreads = 4;
-		uint64_t maxmem = 30ull*1024ull*1024ull*1024ull; // 30GB
+		int64_t numthreads = -1;
+		int64_t maxmem = -1;
 
 		std::ostringstream optsstr;
 		std::string space;
@@ -80,6 +80,18 @@ int main(int argc, char * argv[])
 					return EXIT_FAILURE;
 				}
 			}
+		}
+
+		if ( numthreads < 0 )
+		{
+			std::cerr << "[E] required argument -T not given" << std::endl;
+			return EXIT_FAILURE;
+		}
+
+		if ( maxmem < 0 )
+		{
+			std::cerr << "[E] required argument -M not given" << std::endl;
+			return EXIT_FAILURE;
 		}
 
 		std::string const opts = optsstr.str();
@@ -139,8 +151,6 @@ int main(int argc, char * argv[])
 		std::string const dbapath = (pdba->path == ".") ? pdba->root : (pdba->path + "/" + pdba->root);
 		std::string const dbbpath = (pdbb->path == ".") ? pdbb->root : (pdbb->path + "/" + pdbb->root);
 		uint64_t nexttmpid = 0;
-
-		std::cout << "all: files\n";
 
 		if ( dbapath == dbbpath )
 		{
@@ -298,27 +308,18 @@ int main(int argc, char * argv[])
 				std::cout << V[0] << ".check:" << V[0] << "\n\tLAcheck -v " << pdba->dbpath << " " << pdbb->dbpath << " " << V[0] << "\n";
 			}
 
+			#if 0
 			std::cout << "files:";
 			for ( it itc = mergemap.begin(); itc != mergemap.end(); ++itc )
 				std::cout << " " << itc->second.front() << ".check";
 			std::cout << std::endl;
+			#endif
 		}
 		else
 		{
-
+			std::cerr << "[E] asymmetric case not supported yet" << std::endl;
+			return EXIT_FAILURE;
 		}
-
-		#if 0
-		std::cerr << dbapath << std::endl;
-		std::cerr << dbbpath << std::endl;
-		#endif
-
-		#if 0
-	  { "[-vbAI] [-k<int(14)>] [-w<int(6)>] [-h<int(35)>] [-t<int>] [-M<int>] [-P<dir(/tmp)>]",
-	    "        [-e<double(.70)] [-l<int(1000)>] [-s<int(100)>] [-H<int>] [-T<int(4)>]",
-	    "        [-m<track>]+ <subject:db|dam> <target:db|dam> ...",
-	  };
-		#endif
 	}
 	catch(std::exception const & ex)
 	{
