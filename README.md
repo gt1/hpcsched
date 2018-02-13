@@ -150,7 +150,7 @@ Other valid daligner options will be passed through to daligner calls. A
 Makefile produced for a two block reads.db database is
 
 ```
-#{{hpcschedflags}} {{deepsleep}} {{threads32}} {{mem32768}}
+#{{hpcschedflags}} {{deepsleep}} {{threads16}} {{mem32768}}
 reads.1.reads.1.las:
 	daligner -T32 -M32 reads.1 reads.1
 reads.2.reads.1.las reads.1.reads.2.las reads.2.reads.2.las:
