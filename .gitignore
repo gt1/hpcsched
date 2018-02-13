@@ -38,3 +38,4 @@ src/hpcschedworker
 src/processlogs
 src/showcdl
 stamp-h1
+src/hpcscheddaligner
