@@ -135,6 +135,56 @@ Possible arguments are
 * ignorefail: consider job as finished successfully even if it has failed the maximal number of tries
 * deepsleep: terminate unused worker processes if only jobs marked as deepsleep are running or ready to run. The terminated worker processes will be restarted once new jobs become available. This setting is useful to avoid processes which are idle for a long time.
 
+Example for daligner
+--------------------
+
+A Makefile for daligner [https://github.com/thegenemyers/DALIGNER] can be
+created using the program hpcscheddaligner similarly to calling HPC.daligner
+in the daligner package.
+
+A sample call is
+
+	hpcscheddaligner -T16 -M32 reads.db
+
+Other valid daligner options will be passed through to daligner calls. A
+Makefile produced for a two block reads.db database is
+
+```
+#{{hpcschedflags}} {{deepsleep}} {{threads32}} {{mem32768}}
+reads.1.reads.1.las:
+	daligner -T32 -M32 reads.1 reads.1
+reads.2.reads.1.las reads.1.reads.2.las reads.2.reads.2.las:
+	daligner -T32 -M32 reads.2 reads.1 reads.2
+#{{hpcschedflags}} {{deepsleep}}
+reads.1.reads.1.las.check:reads.1.reads.1.las
+	LAcheck -v ./reads.db ./reads.db reads.1.reads.1.las
+reads.1.reads.2.las.check:reads.1.reads.2.las
+	LAcheck -v ./reads.db ./reads.db reads.1.reads.2.las
+reads.1.las: reads.1.reads.1.las.check reads.1.reads.2.las.check
+	LAmerge reads.1.las reads.1.reads.1.las reads.1.reads.2.las
+LAmerge_reads.1.las_cleanup: reads.1.las
+	rm reads.1.reads.1.las
+	rm reads.1.reads.2.las
+reads.1.las.check:reads.1.las
+	LAcheck -v ./reads.db ./reads.db reads.1.las
+reads.2.reads.1.las.check:reads.2.reads.1.las
+	LAcheck -v ./reads.db ./reads.db reads.2.reads.1.las
+reads.2.reads.2.las.check:reads.2.reads.2.las
+	LAcheck -v ./reads.db ./reads.db reads.2.reads.2.las
+reads.2.las: reads.2.reads.1.las.check reads.2.reads.2.las.check
+	LAmerge reads.2.las reads.2.reads.1.las reads.2.reads.2.las
+LAmerge_reads.2.las_cleanup: reads.2.las
+	rm reads.2.reads.1.las
+	rm reads.2.reads.2.las
+reads.2.las.check:reads.2.las
+	LAcheck -v ./reads.db ./reads.db reads.2.las
+```
+
+The file produced can be used via hpcschedmake as described above. In the
+example case this will produce the alignment file reads.1.las and
+reads.2.las. These two files and also the temporary files produced in
+between are checked using daligner's LAcheck program.
+
 Source
 ------
 
