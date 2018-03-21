@@ -460,6 +460,7 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		{
 			libmaus2::aio::OutputStreamInstance OSI(script);
 			OSI << "#! /bin/bash\n";
+			OSI << "set -Eeuxo pipefail\n";
 			for ( uint64_t i = 0; i < R.commands.size(); ++i )
 				OSI << R.commands[i] << '\n';
 			OSI << "RT=$?\n";
