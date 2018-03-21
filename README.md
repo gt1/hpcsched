@@ -152,9 +152,9 @@ Makefile produced for a two block reads.db database is
 ```
 #{{hpcschedflags}} {{deepsleep}} {{threads16}} {{mem32768}}
 reads.1.reads.1.las:
-	daligner -T32 -M32 reads.1 reads.1
+	daligner -T16 -M32 reads.1 reads.1
 reads.2.reads.1.las reads.1.reads.2.las reads.2.reads.2.las:
-	daligner -T32 -M32 reads.2 reads.1 reads.2
+	daligner -T16 -M32 reads.2 reads.1 reads.2
 #{{hpcschedflags}} {{deepsleep}}
 reads.1.reads.1.las.check:reads.1.reads.1.las
 	LAcheck -v ./reads.db ./reads.db reads.1.reads.1.las
