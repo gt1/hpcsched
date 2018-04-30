@@ -244,7 +244,7 @@ int main(int argc, char * argv[])
 					for ( uint64_t i = 0; i < numblocks; ++i )
 					{
 						uint64_t const low = i * fanin;
-						uint64_t const high = std::min(low+fanin,V.size());
+						uint64_t const high = std::min(low+fanin,static_cast<uint64_t>(V.size()));
 
 						std::ostringstream fnostr;
 						fnostr << tmpfilebase << "_" << nexttmpid++ << ".las";
