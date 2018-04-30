@@ -1,3 +1,10 @@
+hpcsched (0.0.9-1) unstable; urgency=medium
+
+  * avoid some file creations
+  * use absolute path names for temp file generation
+
+ -- German Tischler <tischler@mpi-cbg.de>  Mon, 30 Apr 2018 10:32:43 +0200
+
 hpcsched (0.0.8-1) unstable; urgency=medium
 
   * add set -Eeuxo pipefail to detect script failures in hpcschedmake
