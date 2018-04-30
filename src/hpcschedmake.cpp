@@ -381,6 +381,50 @@ std::vector<Rule> parseFile(std::string const fn)
 	return VR;
 }
 
+#if 0
+static void schdir(std::string const & d)
+{
+	bool done = false;
+
+	while ( !done )
+	{
+		int const r = chdir(d.c_str());
+
+		if ( r == 0 )
+			done = true;
+		else
+		{
+			int const error = errno;
+
+			switch ( error )
+			{
+				case EINTR:
+				case EAGAIN:
+					break;
+				default:
+				{
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "[E] chdir(" << d << "): " << strerror(error) << std::endl;
+					lme.finish();
+					throw lme;
+				}
+			}
+		}
+	}
+}
+#endif
+
+static std::string abspath(std::string const & s)
+{
+	if ( ! s.size() || s[0] == '/' )
+		return s;
+
+	// current directory
+	std::string const cdir = ::libmaus2::util::ArgInfo::getCurDir();
+
+	return cdir + "/" + s;
+}
+
 int hpcschedmake(libmaus2::util::ArgParser const & arg)
 {
 	std::string const fn = arg[0];
@@ -388,7 +432,7 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 	std::vector<Rule> const VL = parseFile(fn);
 
 	std::string const dn = arg.uniqueArgPresent("d") ? arg["d"] : getDefaultD(arg);
-	libmaus2::util::TempFileNameGenerator tgen(dn,4,16 /* dirmod */, 16 /* filemod */);
+	libmaus2::util::TempFileNameGenerator tgen(abspath(dn),4,16 /* dirmod */, 16 /* filemod */);
 
 	struct ProducedInfo
 	{
