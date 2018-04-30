@@ -22,6 +22,7 @@
 #include <libmaus2/util/Command.hpp>
 #include <libmaus2/util/CommandContainer.hpp>
 #include <libmaus2/util/ContainerDescriptionList.hpp>
+#include <libmaus2/parallel/NumCpus.hpp>
 #include <sstream>
 #include <regex>
 
@@ -429,6 +430,9 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 {
 	std::string const fn = arg[0];
 
+	// number of threads
+	uint64_t const numthreads = arg.uniqueArgPresent("t") ? arg.getUnsignedNumericArg<uint64_t>("t") : getDefaultNumThreads();
+
 	std::vector<Rule> const VL = parseFile(fn);
 
 	std::string const dn = arg.uniqueArgPresent("d") ? arg["d"] : getDefaultD(arg);
@@ -483,49 +487,31 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		}
 	}
 
-	std::vector < libmaus2::util::CommandContainer > VCC;
+	std::vector < libmaus2::util::CommandContainer > VCC(VL.size());
+	std::string const shell = "/bin/bash";
 
 	for ( uint64_t id = 0; id < VL.size(); ++id )
 	{
 		Rule const R = VL[id];
 
 		std::string const in = "/dev/null";
+		std::string const out = "/dev/null";
+		std::string const err = "/dev/null";
+		
+		std::ostringstream scriptscr;
 
-		std::ostringstream ostr;
-		ostr << tgen.getFileName() << "_" << id;
-
-		std::string const filebase = ostr.str();
-		std::string const out = filebase + ".out";
-		std::string const err = filebase + ".err";
-		std::string const script = filebase + ".script";
-		std::string const code = filebase + ".returncode";
-		std::string const command = filebase + ".com";
-
+		// write script
 		{
-			libmaus2::aio::OutputStreamInstance OSI(script);
-			OSI << "#! /bin/bash\n";
-			OSI << "set -Eeuxo pipefail\n";
+			scriptscr << "#! " << shell << "\n";
+			scriptscr << "set -Eeuxo pipefail\n";
 			for ( uint64_t i = 0; i < R.commands.size(); ++i )
-				OSI << R.commands[i] << '\n';
-			OSI << "RT=$?\n";
-			OSI << "echo ${RT} >" << code << "\n";
-			OSI << "exit ${RT}\n";
-			OSI.flush();
+				scriptscr << R.commands[i] << '\n';
+			scriptscr << "RT=$?\n";
+			scriptscr << "exit ${RT}\n";
+			scriptscr.flush();
 		}
 
-		{
-			libmaus2::aio::OutputStreamInstance OSI(command);
-			for ( uint64_t i = 0; i < R.commands.size(); ++i )
-				OSI << R.commands[i] << '\n';
-			OSI.flush();
-		}
-
-		std::vector<std::string> tokens;
-
-		tokens.push_back("/bin/bash");
-		tokens.push_back(script);
-
-		libmaus2::util::Command C(in,out,err,code,tokens);
+		libmaus2::util::Command C(in,out,err,shell,scriptscr.str());
 		C.numattempts = 0;
 		C.maxattempts = R.maxattempt;
 		C.completed = false;
@@ -556,9 +542,10 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		CN.maxattempt = R.maxattempt;
 		CN.V.push_back(C);
 
-		VCC.push_back(CN);
+		VCC[id] = CN;
 	}
 
+	// compute reverse dependencies
 	for ( uint64_t id = 0; id < VCC.size(); ++id )
 	{
 		libmaus2::util::CommandContainer & CN = VCC[id];
@@ -572,6 +559,11 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 	}
 
 	libmaus2::util::ContainerDescriptionList CDL;
+	CDL.V.resize(VCC.size());
+
+	#if defined(_OPENMP)
+	#pragma omp parallel for num_threads(numthreads) schedule(dynamic,1)
+	#endif
 	for ( uint64_t id = 0; id < VCC.size(); ++id )
 	{
 		std::ostringstream ostr;
@@ -583,7 +575,7 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 
 		libmaus2::util::ContainerDescription const CD(fn, false, VCC[id].rdepid.size());
 
-		CDL.V.push_back(CD);
+		CDL.V[id] = CD;
 	}
 
 	{

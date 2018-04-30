@@ -32,6 +32,7 @@ struct RunInfo
 	std::string outfn;
 	std::string errfn;
 	int status;
+	std::string scriptname;
 
 	RunInfo()
 	{
@@ -53,6 +54,7 @@ struct RunInfo
 		libmaus2::util::StringSerialisation::serialiseString(out,outfn);
 		libmaus2::util::StringSerialisation::serialiseString(out,errfn);
 		libmaus2::util::NumberSerialisation::serialiseSignedNumber(out,status);
+		libmaus2::util::StringSerialisation::serialiseString(out,scriptname);
 		return out;
 	}
 
@@ -74,6 +76,7 @@ struct RunInfo
 		outfn = libmaus2::util::StringSerialisation::deserialiseString(in);
 		errfn = libmaus2::util::StringSerialisation::deserialiseString(in);
 		status = libmaus2::util::NumberSerialisation::deserialiseSignedNumber(in);
+		scriptname = libmaus2::util::StringSerialisation::deserialiseString(in);
 		return in;
 	}
 

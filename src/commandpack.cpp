@@ -145,6 +145,8 @@ static uint64_t parseNumber(std::string const & s)
 
 ContainerInfo handle(libmaus2::util::TempFileNameGenerator & tgen, std::vector<std::string> & lines, uint64_t const id, uint64_t const subid, uint64_t const cnid, std::vector<uint64_t> const & depid, uint64_t const numthreads, std::string const & sid)
 {
+	std::string const shell = "/bin/bash";
+
 	libmaus2::util::CommandContainer CN;
 	CN.id = cnid;
 	CN.depid = depid;
@@ -234,32 +236,17 @@ ContainerInfo handle(libmaus2::util::TempFileNameGenerator & tgen, std::vector<s
 				std::string const filebase = ostr.str();
 				std::string const out = filebase + ".out";
 				std::string const err = filebase + ".err";
-				std::string const script = filebase + ".script";
-				std::string const code = filebase + ".returncode";
-				std::string const command = filebase + ".com";
+				std::ostringstream scriptstr;
 
 				{
-					libmaus2::aio::OutputStreamInstance OSI(script);
-					OSI << "#! /bin/bash\n";
-					OSI << comstr.str() << "\n";
-					OSI << "RT=$?\n";
-					OSI << "echo ${RT} >" << code << "\n";
-					OSI << "exit ${RT}\n";
-					OSI.flush();
+					scriptstr << "#! /bin/bash\n";
+					scriptstr << comstr.str() << "\n";
+					scriptstr << "RT=$?\n";
+					scriptstr << "exit ${RT}\n";
+					scriptstr.flush();
 				}
 
-				{
-					libmaus2::aio::OutputStreamInstance OSI(command);
-					OSI << line << "\n";
-					OSI.flush();
-				}
-
-				std::vector<std::string> tokens;
-
-				tokens.push_back("/bin/bash");
-				tokens.push_back(script);
-
-				libmaus2::util::Command C(in,out,err,code,tokens);
+				libmaus2::util::Command C(in,out,err,shell,scriptstr.str());
 				C.numattempts = 0;
 				C.maxattempts = CN.maxattempt;
 				C.completed = false;

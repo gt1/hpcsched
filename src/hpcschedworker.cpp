@@ -89,7 +89,7 @@ static int doDup2(int const fd0, int const fd1)
 	}
 }
 
-pid_t startCommand(libmaus2::util::Command C, int const outfd = -1, int const errfd = -1)
+pid_t startCommand(libmaus2::util::Command C, std::string const & scriptname, int const outfd = -1, int const errfd = -1)
 {
 	pid_t const pid = fork();
 
@@ -117,7 +117,7 @@ pid_t startCommand(libmaus2::util::Command C, int const outfd = -1, int const er
 				if ( doClose(errfd) != 0 )
 					_exit(EXIT_FAILURE);
 			}
-			int const r = C.dispatch();
+			int const r = C.dispatch(scriptname);
 			_exit(r);
 		}
 		catch(...)
@@ -467,6 +467,7 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 	std::string const errbase = remotetmpbase + "_err";
 	std::string const errdata = errbase + ".data";
 	std::string const metafn = remotetmpbase + ".meta";
+	std::string const scriptbase = remotetmpbase + ".script";
 
 	std::cerr << "[V] using outdata=" << outdata << std::endl;
 	std::cerr << "[V] using errdata=" << errdata << std::endl;
@@ -521,6 +522,9 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						uint64_t const containerid = fdio.readNumber();
 						uint64_t const subid = fdio.readNumber();
 
+						std::ostringstream scriptnamestr;
+						scriptnamestr << scriptbase + "_" << containerid << "_" << subid << ".sh";
+						
 						std::cerr << "[V] starting command " << com << " (" << containerid << "," << subid << ")" << std::endl;
 
 						RI.containerid = containerid;
@@ -531,6 +535,7 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						RI.errend = std::numeric_limits<uint64_t>::max();
 						RI.outfn = outdata;
 						RI.errfn = errdata;
+						RI.scriptname = scriptnamestr.str();
 
 						fdio.writeString(RI.serialise());
 
@@ -538,8 +543,9 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						outPipe = UNIQUE_PTR_MOVE(toutPipe);
 						Pipe::unique_ptr_type terrPipe(new Pipe());
 						errPipe = UNIQUE_PTR_MOVE(terrPipe);
+						
 
-						workpid = startCommand(com,outPipe->getWriteEnd(),errPipe->getWriteEnd());
+						workpid = startCommand(com,scriptnamestr.str(),outPipe->getWriteEnd(),errPipe->getWriteEnd());
 						outPipe->closeWriteEnd();
 						errPipe->closeWriteEnd();
 
@@ -580,6 +586,9 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						RI.status = status;
 						RI.serialise(metaOSI);
 						metaOSI.flush();
+						
+						if ( status == 0 )
+							libmaus2::aio::FileRemoval::removeFile(RI.scriptname);
 
 						// tell control we finished a job
 						fdio.writeNumber(1);
