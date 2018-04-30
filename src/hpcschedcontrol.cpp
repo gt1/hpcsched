@@ -34,7 +34,10 @@
 #include <libmaus2/aio/InputOutputStreamInstance.hpp>
 #include <RunInfo.hpp>
 #include <sys/wait.h>
+
+#if defined(HAVE_EPOLL_CREATE) || defined(HAVE_EPOLL_CREATE1)
 #include <sys/epoll.h>
+#endif
 
 #include <sys/types.h>
 #include <pwd.h>
@@ -477,7 +480,7 @@ struct SlurmControl
 
 			#else
 			libmaus2::exception::LibMausException lme;
-			lme.getStream() << "[E] EPoll: epoll interface not supported " << strerror(error) << std::endl;
+			lme.getStream() << "[E] EPoll: epoll interface not supported " << std::endl;
 			lme.finish();
 			throw lme;
 			#endif
@@ -639,6 +642,7 @@ struct SlurmControl
 		}
 		bool wait(int &, int const = 1000 /* milli seconds */)
 		{
+			return false;
 		}
 		#endif
 	};
