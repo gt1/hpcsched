@@ -1,3 +1,10 @@
+hpcsched (0.0.10-1) unstable; urgency=medium
+
+  * cleanup
+  * store data in CDL instead of separate files
+
+ -- German Tischler <tischler@mpi-cbg.de>  Wed, 02 May 2018 13:22:34 +0200
+
 hpcsched (0.0.9-1) unstable; urgency=medium
 
   * avoid some file creations
