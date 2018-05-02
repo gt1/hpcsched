@@ -524,7 +524,7 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 
 						std::ostringstream scriptnamestr;
 						scriptnamestr << scriptbase + "_" << containerid << "_" << subid << ".sh";
-						
+
 						std::cerr << "[V] starting command " << com << " (" << containerid << "," << subid << ")" << std::endl;
 
 						RI.containerid = containerid;
@@ -543,7 +543,7 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						outPipe = UNIQUE_PTR_MOVE(toutPipe);
 						Pipe::unique_ptr_type terrPipe(new Pipe());
 						errPipe = UNIQUE_PTR_MOVE(terrPipe);
-						
+
 
 						workpid = startCommand(com,scriptnamestr.str(),outPipe->getWriteEnd(),errPipe->getWriteEnd());
 						outPipe->closeWriteEnd();
@@ -586,7 +586,7 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						RI.status = status;
 						RI.serialise(metaOSI);
 						metaOSI.flush();
-						
+
 						if ( status == 0 )
 							libmaus2::aio::FileRemoval::removeFile(RI.scriptname);
 

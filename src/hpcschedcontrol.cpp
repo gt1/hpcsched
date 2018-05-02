@@ -695,7 +695,6 @@ struct SlurmControl
 	std::vector < libmaus2::util::ContainerDescription > & CDLV;
 	std::vector < libmaus2::util::CommandContainer > VCC;
 
-
 	std::set < JobDescription > Sunfinished;
 	std::set < JobDescription > Srunning;
 	std::set<uint64_t> Sresubmit;
@@ -793,7 +792,7 @@ struct SlurmControl
 		std::vector < libmaus2::util::CommandContainer > VCC(CDLV.size());
 		for ( uint64_t i = 0; i < CDLV.size(); ++i )
 		{
-			libmaus2::aio::InputStreamInstance ISI(CDLV[i].fn);
+			std::istringstream ISI(CDLV[i].fn);
 			VCC[i].deserialise(ISI);
 			CDLV[i].missingdep = 0;
 		}
@@ -921,6 +920,15 @@ struct SlurmControl
 
 	void writeContainer(uint64_t const i)
 	{
+		std::ostringstream ostr;
+		VCC.at(i).serialise(ostr);
+		CDLV.at(i).fn = ostr.str();
+
+		libmaus2::aio::OutputStreamInstance OSI(cdl);
+		CDL.replace(i,CDLV.at(i),OSI);
+		// void replace(uint64_t const i, ContainerDescription const & CD, std::ostream & out)
+
+		#if 0
 		std::string const fn = CDLV.at(i).fn;
 		std::string const tmpfn = fn + ".tmp";
 
@@ -934,6 +942,7 @@ struct SlurmControl
 		pOSI.reset();
 
 		libmaus2::aio::OutputStreamFactoryContainer::rename(tmpfn,fn);
+		#endif
 	}
 
 	void handleSuccessfulCommand(

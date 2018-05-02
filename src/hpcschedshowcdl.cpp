@@ -52,7 +52,7 @@ struct CommandContainerView
 		std::vector < libmaus2::util::CommandContainer > VCC(CDLV.size());
 		for ( uint64_t i = 0; i < CDLV.size(); ++i )
 		{
-			libmaus2::aio::InputStreamInstance ISI(CDLV[i].fn);
+			std::istringstream ISI(CDLV[i].fn);
 			VCC[i].deserialise(ISI);
 			CDLV[i].missingdep = 0;
 		}

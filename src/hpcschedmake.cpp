@@ -497,7 +497,7 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		std::string const in = "/dev/null";
 		std::string const out = "/dev/null";
 		std::string const err = "/dev/null";
-		
+
 		std::ostringstream scriptscr;
 
 		// write script
@@ -566,14 +566,17 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 	#endif
 	for ( uint64_t id = 0; id < VCC.size(); ++id )
 	{
+		#if 0
 		std::ostringstream ostr;
 		ostr << tgen.getFileName() << ".cc";
 		std::string const fn = ostr.str();
+		#endif
 
-		libmaus2::aio::OutputStreamInstance OSI(fn);
+		std::ostringstream OSI;
+		// libmaus2::aio::OutputStreamInstance OSI(fn);
 		VCC[id].serialise(OSI);
 
-		libmaus2::util::ContainerDescription const CD(fn, false, VCC[id].rdepid.size());
+		libmaus2::util::ContainerDescription const CD(OSI.str(), false, VCC[id].rdepid.size());
 
 		CDL.V[id] = CD;
 	}
