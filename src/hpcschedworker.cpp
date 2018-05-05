@@ -33,11 +33,14 @@
 #include <libmaus2/util/Command.hpp>
 #include <libmaus2/util/TarWriter.hpp>
 #include <libmaus2/parallel/PosixThread.hpp>
+#include <libmaus2/util/DynamicLoading.hpp>
+#include <libmaus2/util/PathTools.hpp>
 #include <FDIO.hpp>
 #include <sys/wait.h>
 
 #include <sys/types.h>
 #include <pwd.h>
+#include <libgen.h>
 
 static int doClose(int const fd)
 {
@@ -89,8 +92,122 @@ static int doDup2(int const fd0, int const fd1)
 	}
 }
 
+std::pair<std::string,std::string> split(std::string const & s)
+{
+	uint64_t p = 0;
+	while ( p < s.size() && !isspace(s[p]) )
+		++p;
+
+	std::string const first = s.substr(0,p);
+
+	while ( p < s.size() && isspace(s[p]) )
+		++p;
+
+	std::string const second = s.substr(p);
+
+	return std::pair<std::string,std::string>(first,second);
+}
+
+extern "C" {
+	void dlopen_dummy()
+	{
+
+	}
+}
+
+
+static std::string getExecPath()
+{
+	Dl_info libinfo;
+	int const r = dladdr(reinterpret_cast<void*>(dlopen_dummy), &libinfo);
+
+	if ( ! r )
+	{
+		::libmaus2::exception::LibMausException se;
+		se.getStream() << "dladdr failed: " << dlerror() << std::endl;
+		se.finish();
+		throw se;
+	}
+
+	libmaus2::autoarray::AutoArray<char> D(strlen(libinfo.dli_fname)+1,true);
+	std::copy(libinfo.dli_fname,libinfo.dli_fname + strlen(libinfo.dli_fname),D.begin());
+
+	char * dn = dirname(D.begin());
+
+	return libmaus2::util::PathTools::getAbsPath(std::string(dn));
+}
+
+struct Module
+{
+	typedef int(*function_type)(char const *, uint64_t const);
+
+	libmaus2::util::DynamicLibrary::shared_ptr_type library;
+	libmaus2::util::DynamicLibraryFunction<function_type>::shared_ptr_type function;
+};
+
+std::map < std::string, Module > modules;
+
+bool canLoadLibrary(std::string const & name)
+{
+	try
+	{
+		libmaus2::util::DynamicLibrary lib(name);
+		return true;
+	}
+	catch(...)
+	{
+		return false;
+	}
+}
+
 pid_t startCommand(libmaus2::util::Command C, std::string const & scriptname, int const outfd = -1, int const errfd = -1)
 {
+	if ( C.modcall )
+	{
+		std::pair<std::string,std::string> const P = split(C.script);
+
+		if ( modules.find(P.first) == modules.end() )
+		{
+			try
+			{
+				Module module;
+				std::string const functionname = "hpcsched_" + P.first;
+				std::string modname;
+
+				if ( canLoadLibrary(functionname + ".so") )
+					modname = functionname + ".so";
+				else if ( canLoadLibrary(getExecPath() + "/../lib/" + functionname + ".so") )
+					modname = getExecPath() + "/../lib/" + functionname + ".so";
+				else
+				{
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "[E] unable to find module for " << P.first << std::endl;
+					lme.finish();
+					throw lme;
+				}
+
+				libmaus2::util::DynamicLibrary::shared_ptr_type library(
+					new libmaus2::util::DynamicLibrary(modname)
+				);
+				module.library = library;
+
+				libmaus2::util::DynamicLibraryFunction<Module::function_type>::shared_ptr_type function(
+					new libmaus2::util::DynamicLibraryFunction<Module::function_type>(
+						*(module.library),
+						functionname
+					)
+				);
+				module.function = function;
+
+				modules [ P.first ] = module;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] trying to load module for " << P.first << " failed:\n" << ex.what() << std::endl;
+			}
+		}
+	}
+
 	pid_t const pid = fork();
 
 	if ( pid == 0 )
@@ -117,8 +234,30 @@ pid_t startCommand(libmaus2::util::Command C, std::string const & scriptname, in
 				if ( doClose(errfd) != 0 )
 					_exit(EXIT_FAILURE);
 			}
-			int const r = C.dispatch(scriptname);
-			_exit(r);
+			if ( C.modcall )
+			{
+				std::pair<std::string,std::string> const P = split(C.script);
+				std::map < std::string, Module >::iterator it = modules.find(P.first);
+
+				if ( it == modules.end() )
+				{
+					_exit(EXIT_FAILURE);
+				}
+				else
+				{
+					Module & mod = it->second;
+					libmaus2::util::DynamicLibraryFunction<Module::function_type> & function = *(mod.function);
+					char const * p = P.second.c_str();
+					uint64_t const n = P.second.size();
+					int const r = function.func(p,n);
+					_exit(r);
+				}
+			}
+			else
+			{
+				int const r = C.dispatch(scriptname);
+				_exit(r);
+			}
 		}
 		catch(...)
 		{

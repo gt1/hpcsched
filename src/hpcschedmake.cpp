@@ -22,6 +22,7 @@
 #include <libmaus2/util/Command.hpp>
 #include <libmaus2/util/CommandContainer.hpp>
 #include <libmaus2/util/ContainerDescriptionList.hpp>
+#include <libmaus2/util/Base64.hpp>
 #include <libmaus2/parallel/NumCpus.hpp>
 #include <sstream>
 #include <regex>
@@ -490,6 +491,8 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 	std::vector < libmaus2::util::CommandContainer > VCC(VL.size());
 	std::string const shell = "/bin/bash";
 
+	std::string const modmagic = "hpcsched::";
+
 	for ( uint64_t id = 0; id < VL.size(); ++id )
 	{
 		Rule const R = VL[id];
@@ -498,16 +501,23 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		std::string const out = "/dev/null";
 		std::string const err = "/dev/null";
 
-		std::ostringstream scriptscr;
+		bool const modcall =
+			(R.commands.size() == 1) &&
+			(R.commands[0].size() >= modmagic.size()) &&
+			(R.commands[0].substr(0,modmagic.size()) == modmagic);
 
-		// write script
+		std::ostringstream scriptscr;
+		if ( modcall )
 		{
+			scriptscr << R.commands[0].substr(modmagic.size());
+		}
+		else
+		{
+			// produce shell script
 			scriptscr << "#! " << shell << "\n";
 			scriptscr << "set -Eeuxo pipefail\n";
 			for ( uint64_t i = 0; i < R.commands.size(); ++i )
 				scriptscr << R.commands[i] << '\n';
-			scriptscr << "RT=$?\n";
-			scriptscr << "exit ${RT}\n";
 			scriptscr.flush();
 		}
 
@@ -517,6 +527,7 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 		C.completed = false;
 		C.ignorefail = R.ignorefail;
 		C.deepsleep = R.deepsleep;
+		C.modcall = modcall;
 
 		libmaus2::util::CommandContainer CN;
 		CN.id = id;
@@ -594,6 +605,7 @@ int hpcschedmake(libmaus2::util::ArgParser const & arg)
 
 	return EXIT_SUCCESS;
 }
+
 
 int main(int argc, char * argv[])
 {
