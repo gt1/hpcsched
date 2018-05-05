@@ -1,3 +1,9 @@
+hpcsched (0.0.13-1) unstable; urgency=medium
+
+  * fix check in hpcschedworker
+
+ -- German Tischler <tischler@mpi-cbg.de>  Sun, 06 May 2018 00:48:38 +0200
+
 hpcsched (0.0.12-1) unstable; urgency=medium
 
   * adapat lib/module path in hpcschedworker
