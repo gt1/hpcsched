@@ -176,7 +176,7 @@ pid_t startCommand(libmaus2::util::Command C, std::string const & scriptname, in
 
 				if ( canLoadLibrary(functionname + ".so") )
 					modname = functionname + ".so";
-				else if ( canLoadLibrary(getExecPath() + "/../lib/" + functionname + ".so") )
+				else if ( canLoadLibrary(getExecPath() + "/../lib/hpcsched/" + PACKAGE_VERSION + "/" + functionname + ".so") )
 					modname = getExecPath() + "/../lib/hpcsched/" + PACKAGE_VERSION + "/" + functionname + ".so";
 				else
 				{
