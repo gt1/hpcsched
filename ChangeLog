@@ -1,3 +1,9 @@
+hpcsched (0.0.12-1) unstable; urgency=medium
+
+  * adapat lib/module path in hpcschedworker
+
+ -- German Tischler <tischler@mpi-cbg.de>  Sun, 06 May 2018 00:41:25 +0200
+
 hpcsched (0.0.11-1) unstable; urgency=medium
 
   * add module function calling
