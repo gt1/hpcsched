@@ -151,6 +151,7 @@ bool canLoadLibrary(std::string const & name)
 {
 	try
 	{
+		std::cerr << "canLoadLibrary(" << name << ")" << std::endl;
 		libmaus2::util::DynamicLibrary lib(name);
 		return true;
 	}
