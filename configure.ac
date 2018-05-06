@@ -1,4 +1,4 @@
-AC_INIT(hpcsched,0.0.14,[tischler@mpi-cbg.de],[hpcsched],[http://www.mpi-cbg.de])
+AC_INIT(hpcsched,0.0.15,[tischler@mpi-cbg.de],[hpcsched],[http://www.mpi-cbg.de])
 AC_CANONICAL_SYSTEM
 AC_PROG_LIBTOOL
 
