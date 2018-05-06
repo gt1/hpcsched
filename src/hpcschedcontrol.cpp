@@ -718,6 +718,7 @@ struct SlurmControl
 	std::vector < StartWorkerRequest > Vreq;
 
 	libmaus2::aio::InputOutputStreamInstance metastream;
+	libmaus2::aio::InputOutputStreamInstance cdlstream;
 
 	static void writeJobDescription(
 		std::string const & fn,
@@ -924,9 +925,8 @@ struct SlurmControl
 		VCC.at(i).serialise(ostr);
 		CDLV.at(i).fn = ostr.str();
 
-		libmaus2::aio::OutputStreamInstance OSI(cdl);
-		CDL.replace(i,CDLV.at(i),OSI);
-		// void replace(uint64_t const i, ContainerDescription const & CD, std::ostream & out)
+		CDL.replace(i,CDLV.at(i),cdlstream);
+		cdlstream.flush();
 
 		#if 0
 		std::string const fn = CDLV.at(i).fn;
@@ -1106,7 +1106,8 @@ struct SlurmControl
 	  pstate(),
 	  failed(false),
 	  Vreq(computeStartRequests(rarg)),
-	  metastream(cdl + ".meta",std::ios::in | std::ios::out | std::ios::binary)
+	  metastream(cdl + ".meta",std::ios::in | std::ios::out | std::ios::binary),
+	  cdlstream(cdl,std::ios::in | std::ios::out | std::ios::binary)
 	{
 		metastream.seekp(0,std::ios::end);
 
