@@ -108,35 +108,6 @@ std::pair<std::string,std::string> split(std::string const & s)
 	return std::pair<std::string,std::string>(first,second);
 }
 
-extern "C" {
-	void dlopen_dummy()
-	{
-
-	}
-}
-
-
-static std::string getExecPath()
-{
-	Dl_info libinfo;
-	int const r = dladdr(reinterpret_cast<void*>(dlopen_dummy), &libinfo);
-
-	if ( ! r )
-	{
-		::libmaus2::exception::LibMausException se;
-		se.getStream() << "dladdr failed: " << dlerror() << std::endl;
-		se.finish();
-		throw se;
-	}
-
-	libmaus2::autoarray::AutoArray<char> D(strlen(libinfo.dli_fname)+1,true);
-	std::copy(libinfo.dli_fname,libinfo.dli_fname + strlen(libinfo.dli_fname),D.begin());
-
-	char * dn = dirname(D.begin());
-
-	return libmaus2::util::PathTools::getAbsPath(std::string(dn));
-}
-
 struct Module
 {
 	typedef int(*function_type)(char const *, uint64_t const);
@@ -161,7 +132,13 @@ bool canLoadLibrary(std::string const & name)
 	}
 }
 
-pid_t startCommand(libmaus2::util::Command C, std::string const & scriptname, int const outfd = -1, int const errfd = -1)
+pid_t startCommand(
+	libmaus2::util::ArgParser const & arg,
+	libmaus2::util::Command C,
+	std::string const & scriptname,
+	int const outfd = -1,
+	int const errfd = -1
+)
 {
 	if ( C.modcall )
 	{
@@ -177,14 +154,23 @@ pid_t startCommand(libmaus2::util::Command C, std::string const & scriptname, in
 
 				if ( canLoadLibrary(functionname + ".so") )
 					modname = functionname + ".so";
-				else if ( canLoadLibrary(getExecPath() + "/../lib/hpcsched/" + PACKAGE_VERSION + "/" + functionname + ".so") )
-					modname = getExecPath() + "/../lib/hpcsched/" + PACKAGE_VERSION + "/" + functionname + ".so";
 				else
 				{
-					libmaus2::exception::LibMausException lme;
-					lme.getStream() << "[E] unable to find module for " << P.first << std::endl;
-					lme.finish();
-					throw lme;
+					std::string const prog = arg.getAbsProgName();
+					std::string const progdir = libmaus2::util::PathTools::sdirname(prog);
+					std::string const libdir = progdir + "/../lib/hpcsched/" + PACKAGE_VERSION;
+					std::string const modpath = libdir + "/" + functionname + ".so";
+					if ( canLoadLibrary(modpath) )
+					{
+						modname = modpath;
+					}
+					else
+					{
+						libmaus2::exception::LibMausException lme;
+						lme.getStream() << "[E] unable to find module for " << P.first << std::endl;
+						lme.finish();
+						throw lme;
+					}
 				}
 
 				libmaus2::util::DynamicLibrary::shared_ptr_type library(
@@ -685,7 +671,7 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						errPipe = UNIQUE_PTR_MOVE(terrPipe);
 
 
-						workpid = startCommand(com,scriptnamestr.str(),outPipe->getWriteEnd(),errPipe->getWriteEnd());
+						workpid = startCommand(arg,com,scriptnamestr.str(),outPipe->getWriteEnd(),errPipe->getWriteEnd());
 						outPipe->closeWriteEnd();
 						errPipe->closeWriteEnd();
 
