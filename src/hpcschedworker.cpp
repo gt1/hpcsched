@@ -670,7 +670,6 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						Pipe::unique_ptr_type terrPipe(new Pipe());
 						errPipe = UNIQUE_PTR_MOVE(terrPipe);
 
-
 						workpid = startCommand(arg,com,scriptnamestr.str(),outPipe->getWriteEnd(),errPipe->getWriteEnd());
 						outPipe->closeWriteEnd();
 						errPipe->closeWriteEnd();
@@ -707,6 +706,16 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 					{
 						workpid = static_cast<pid_t>(-1);
 
+						outCopy->join();
+						outCopy.reset();
+						errCopy->join();
+						errCopy.reset();
+						outPipe.reset();
+						errPipe.reset();
+
+						outData.flush();
+						errData.flush();
+
 						RI.outend = outData.tellp();
 						RI.errend = errData.tellp();
 						RI.status = status;
@@ -722,16 +731,6 @@ int slurmworker(libmaus2::util::ArgParser const & arg)
 						fdio.writeString(RI.serialise());
 						// wait for acknowledgement
 						fdio.readNumber();
-
-						outCopy->join();
-						outCopy.reset();
-						errCopy->join();
-						errCopy.reset();
-						outPipe.reset();
-						errPipe.reset();
-
-						outData.flush();
-						errData.flush();
 
 						std::cerr << "[V] finished with status " << status << std::endl;
 
