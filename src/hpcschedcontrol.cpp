@@ -33,6 +33,7 @@
 #include <libmaus2/util/CommandContainer.hpp>
 #include <libmaus2/aio/InputOutputStreamInstance.hpp>
 #include <libmaus2/parallel/TerminatableSynchronousQueue.hpp>
+#include <libmaus2/digest/md5.hpp>
 #include <RunInfo.hpp>
 #include <sys/wait.h>
 
@@ -675,26 +676,39 @@ struct SlurmControl
 
 	struct WriteContainerRequest
 	{
-		libmaus2::util::ContainerDescriptionList * CDL;
-		std::vector < libmaus2::util::CommandContainer > * VCC;
-		uint64_t i;
-		std::iostream * cdlstream;
+		libmaus2::util::ContainerDescription object;
+		uint64_t offset;
 
 		WriteContainerRequest() {}
 		WriteContainerRequest(
-			libmaus2::util::ContainerDescriptionList & rCDL,
-			std::vector < libmaus2::util::CommandContainer > & rVCC,
-			uint64_t const ri,
-			std::iostream & rcdlstream
-		) : CDL(&rCDL), VCC(&rVCC), i(ri), cdlstream(&rcdlstream) {}
-
-		void dispatch()
+			libmaus2::util::ContainerDescription const & robject,
+			uint64_t const roffset
+		) : object(robject), offset(roffset) {}
+		WriteContainerRequest(std::istream & in)
 		{
-			std::ostringstream ostr;
-			VCC->at(i).serialise(ostr);
-			CDL->V.at(i).fn = ostr.str();
-			CDL->replace(i,CDL->V.at(i),*cdlstream);
-			cdlstream->flush();
+			deserialise(in);
+		}
+
+		void dispatch(std::iostream & cdlstream)
+		{
+			cdlstream.clear();
+			cdlstream.seekp(offset);
+			object.serialise(cdlstream);
+			cdlstream.flush();
+		}
+
+		std::ostream & serialise(std::ostream & out) const
+		{
+			object.serialise(out);
+			libmaus2::util::NumberSerialisation::serialiseNumber(out,offset);
+			return out;
+		}
+
+		std::istream & deserialise(std::istream & in)
+		{
+			object.deserialise(in);
+			offset = libmaus2::util::NumberSerialisation::deserialiseNumber(in);
+			return in;
 		}
 	};
 
@@ -744,17 +758,172 @@ struct SlurmControl
 	std::vector < StartWorkerRequest > Vreq;
 
 	libmaus2::aio::InputOutputStreamInstance metastream;
-	libmaus2::aio::InputOutputStreamInstance cdlstream;
+	libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream;
 
 	libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> WCRQ;
 
 	struct WCRQWriterThread : public libmaus2::parallel::PosixThread
 	{
 		libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & WCRQ;
+		libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream;
+		std::string const cdl;
+		std::vector < WriteContainerRequest > V;
+		bool runok;
 
-		WCRQWriterThread(libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & rWCRQ) : WCRQ(rWCRQ)
+		static uint64_t getUpdateThreshold()
+		{
+			return 64;
+		}
+
+		WCRQWriterThread(
+			libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & rWCRQ,
+			libmaus2::aio::InputOutputStreamInstance::shared_ptr_type & rcdlstream,
+			std::string const rcdl
+		) : WCRQ(rWCRQ), cdlstream(rcdlstream), cdl(rcdl), runok(true)
 		{
 
+		}
+
+		static std::string serialiseVector(std::vector < WriteContainerRequest > const & V)
+		{
+			std::ostringstream ostr;
+			libmaus2::util::NumberSerialisation::serialiseNumber(ostr,V.size());
+			for ( uint64_t i = 0; i < V.size(); ++i )
+				V[i].serialise(ostr);
+
+			return ostr.str();
+		}
+
+		static bool loadJournal(std::vector < WriteContainerRequest > & V, std::string const & journalfn)
+		{
+			try
+			{
+				std::string md5in;
+				{
+					libmaus2::aio::InputStreamInstance ISI(journalfn);
+					uint64_t const n = libmaus2::util::NumberSerialisation::deserialiseNumber(ISI);
+					V.resize(n);
+					for ( uint64_t i = 0; i < n; ++i )
+						V[i].deserialise(ISI);
+					md5in = libmaus2::util::StringSerialisation::deserialiseString(ISI);
+				}
+
+				// compute MD5 for data
+				std::string md5data;
+				libmaus2::util::MD5::md5(serialiseVector(V),md5data);
+
+				// check integrity
+				if ( md5data == md5in )
+					return true;
+				else
+					return false;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to load journal: " << std::endl;
+				return false;
+			}
+		}
+
+		// apply journal
+		static bool applyJournal(std::iostream & cdlstream, std::string const & journalfn)
+		{
+			bool ok = false;
+
+			try
+			{
+				// read data
+				std::vector < WriteContainerRequest > V;
+				bool const journalok = loadJournal(V,journalfn);
+
+				if ( journalok )
+				{
+					// apply journal
+					for ( uint64_t i = 0; i < V.size(); ++i )
+						V[i].dispatch(cdlstream);
+					cdlstream.sync();
+
+					libmaus2::aio::FileRemoval::removeFile(journalfn);
+
+					ok = true;
+				}
+				else
+				{
+					libmaus2::aio::FileRemoval::removeFile(journalfn);
+				}
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] applyJournal failed: " << ex.what() << std::endl;
+			}
+
+			return ok;
+		}
+
+		// apply journal
+		static bool applyJournal(std::string const & cdl, std::string const & journalfn)
+		{
+			libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream(
+				new libmaus2::aio::InputOutputStreamInstance(cdl,std::ios::in | std::ios::out | std::ios::binary)
+			);
+
+			return applyJournal(*cdlstream,journalfn);
+		}
+
+		// write journal to disk
+		bool writeJournal(std::string const & journalfn)
+		{
+			try
+			{
+				// get data
+				std::string const data = serialiseVector(V);
+
+				// clear vector
+				V.resize(0);
+
+				std::string md5data;
+				libmaus2::util::MD5::md5(data,md5data);
+
+				libmaus2::aio::OutputStreamInstance::unique_ptr_type OSI(new libmaus2::aio::OutputStreamInstance(journalfn));
+				OSI->write(data.c_str(),data.size());
+				libmaus2::util::StringSerialisation::serialiseString(*OSI,md5data);
+				OSI->flush();
+
+				if ( ! *OSI )
+				{
+					OSI.reset();
+
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "[E] unable to write journal " << journalfn << std::endl;
+					lme.finish();
+					throw lme;
+				}
+
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] writeJournal:\n" << ex.what() << std::endl;
+				libmaus2::aio::FileRemoval::removeFile(journalfn);
+				return false;
+			}
+		}
+
+		bool handleVectorFlush()
+		{
+			std::string const journalfn = cdl + ".journal";
+
+			if ( runok )
+			{
+				bool ok = true;
+
+				ok = ok && writeJournal(journalfn);
+				ok = ok && applyJournal(*cdlstream,journalfn);
+
+				runok = runok && ok;
+			}
+
+			return runok;
 		}
 
 		void * run()
@@ -764,13 +933,19 @@ struct SlurmControl
 				while ( true )
 				{
 					WriteContainerRequest WCR = WCRQ.deque();
-					WCR.dispatch();
+					V.push_back(WCR);
+
+					if ( V.size() >= getUpdateThreshold() )
+						handleVectorFlush();
+					// WCR.dispatch(*cdlstream);
 				}
 			}
 			catch(std::exception const & ex)
 			{
 
 			}
+
+			handleVectorFlush();
 
 			return 0;
 		}
@@ -980,9 +1155,24 @@ struct SlurmControl
 
 	void writeContainer(uint64_t const i)
 	{
-		WriteContainerRequest W(CDL,VCC,i,cdlstream);
+		// serialise object to string
+		std::ostringstream ostr;
+		VCC.at(i).serialise(ostr);
+		// store it in the CDL vector
+		CDL.V.at(i).fn = ostr.str();
+
+		// get updated object
+		libmaus2::util::ContainerDescription const CD = CDL.V.at(i);
+
+		// make sure it has the correct size
+		assert ( CDL.checkSize(i,CD) );
+
+		// get offset in file
+		uint64_t const offset = CDL.getOffset(i).first;
+
+		// enque write request
+		WriteContainerRequest W(CD,offset);
 		WCRQ.enque(W);
-		// W.dispatch();
 	}
 
 	void handleSuccessfulCommand(
@@ -1147,11 +1337,10 @@ struct SlurmControl
 	  failed(false),
 	  Vreq(computeStartRequests(rarg)),
 	  metastream(cdl + ".meta",std::ios::in | std::ios::out | std::ios::binary),
-	  cdlstream(cdl,std::ios::in | std::ios::out | std::ios::binary),
+	  cdlstream(new libmaus2::aio::InputOutputStreamInstance(cdl,std::ios::in | std::ios::out | std::ios::binary)),
 	  WCRQ(),
-	  WCRQT(WCRQ)
+	  WCRQT(WCRQ,cdlstream,cdl)
 	{
-		WCRQT.start();
 
 		metastream.seekp(0,std::ios::end);
 
@@ -1163,6 +1352,8 @@ struct SlurmControl
 
 		countUnfinished();
 		enqueUnfinished();
+
+		WCRQT.start();
 	}
 
 	~SlurmControl()
