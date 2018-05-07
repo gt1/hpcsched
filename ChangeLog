@@ -1,3 +1,10 @@
+hpcsched (0.0.19-1) unstable; urgency=medium
+
+  * add verbosity in hpcschedcontrol journaling
+  * add journaling for cdl updates in hpcschedcontrol
+
+ -- German Tischler <tischler@mpi-cbg.de>  Mon, 07 May 2018 17:42:22 +0200
+
 hpcsched (0.0.18-1) unstable; urgency=medium
 
   * add async updates of control file in hpcschedcontrol
