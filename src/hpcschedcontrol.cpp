@@ -32,6 +32,7 @@
 #include <libmaus2/util/ContainerDescriptionList.hpp>
 #include <libmaus2/util/CommandContainer.hpp>
 #include <libmaus2/aio/InputOutputStreamInstance.hpp>
+#include <libmaus2/parallel/TerminatableSynchronousQueue.hpp>
 #include <RunInfo.hpp>
 #include <sys/wait.h>
 
@@ -672,6 +673,31 @@ struct SlurmControl
 		}
 	};
 
+	struct WriteContainerRequest
+	{
+		libmaus2::util::ContainerDescriptionList * CDL;
+		std::vector < libmaus2::util::CommandContainer > * VCC;
+		uint64_t i;
+		std::iostream * cdlstream;
+
+		WriteContainerRequest() {}
+		WriteContainerRequest(
+			libmaus2::util::ContainerDescriptionList & rCDL,
+			std::vector < libmaus2::util::CommandContainer > & rVCC,
+			uint64_t const ri,
+			std::iostream & rcdlstream
+		) : CDL(&rCDL), VCC(&rVCC), i(ri), cdlstream(&rcdlstream) {}
+
+		void dispatch()
+		{
+			std::ostringstream ostr;
+			VCC->at(i).serialise(ostr);
+			CDL->V.at(i).fn = ostr.str();
+			CDL->replace(i,CDL->V.at(i),*cdlstream);
+			cdlstream->flush();
+		}
+	};
+
 	std::string const curdir;
 	unsigned short serverport;
 	uint64_t const backlog;
@@ -719,6 +745,38 @@ struct SlurmControl
 
 	libmaus2::aio::InputOutputStreamInstance metastream;
 	libmaus2::aio::InputOutputStreamInstance cdlstream;
+
+	libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> WCRQ;
+
+	struct WCRQWriterThread : public libmaus2::parallel::PosixThread
+	{
+		libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & WCRQ;
+
+		WCRQWriterThread(libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & rWCRQ) : WCRQ(rWCRQ)
+		{
+
+		}
+
+		void * run()
+		{
+			try
+			{
+				while ( true )
+				{
+					WriteContainerRequest WCR = WCRQ.deque();
+					WCR.dispatch();
+				}
+			}
+			catch(std::exception const & ex)
+			{
+
+			}
+
+			return 0;
+		}
+	};
+
+	WCRQWriterThread WCRQT;
 
 	static void writeJobDescription(
 		std::string const & fn,
@@ -919,30 +977,12 @@ struct SlurmControl
 		restartSet.insert(slotid);
 	}
 
+
 	void writeContainer(uint64_t const i)
 	{
-		std::ostringstream ostr;
-		VCC.at(i).serialise(ostr);
-		CDLV.at(i).fn = ostr.str();
-
-		CDL.replace(i,CDLV.at(i),cdlstream);
-		cdlstream.flush();
-
-		#if 0
-		std::string const fn = CDLV.at(i).fn;
-		std::string const tmpfn = fn + ".tmp";
-
-		libmaus2::aio::OutputStreamInstance::unique_ptr_type pOSI(
-			new libmaus2::aio::OutputStreamInstance(tmpfn)
-		);
-
-		VCC . at ( i ) . serialise ( *pOSI );
-
-		pOSI->flush();
-		pOSI.reset();
-
-		libmaus2::aio::OutputStreamFactoryContainer::rename(tmpfn,fn);
-		#endif
+		WriteContainerRequest W(CDL,VCC,i,cdlstream);
+		WCRQ.enque(W);
+		// W.dispatch();
 	}
 
 	void handleSuccessfulCommand(
@@ -1107,8 +1147,12 @@ struct SlurmControl
 	  failed(false),
 	  Vreq(computeStartRequests(rarg)),
 	  metastream(cdl + ".meta",std::ios::in | std::ios::out | std::ios::binary),
-	  cdlstream(cdl,std::ios::in | std::ios::out | std::ios::binary)
+	  cdlstream(cdl,std::ios::in | std::ios::out | std::ios::binary),
+	  WCRQ(),
+	  WCRQT(WCRQ)
 	{
+		WCRQT.start();
+
 		metastream.seekp(0,std::ios::end);
 
 		std::cerr << "[V] hostname=" << hostname << " serverport=" << serverport << " number of containers " << CDLV.size() << std::endl;
@@ -1119,6 +1163,12 @@ struct SlurmControl
 
 		countUnfinished();
 		enqueUnfinished();
+	}
+
+	~SlurmControl()
+	{
+		WCRQ.terminate();
+		WCRQT.join();
 	}
 
 	int process()
