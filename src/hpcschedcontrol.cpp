@@ -798,6 +798,8 @@ struct SlurmControl
 		{
 			try
 			{
+				std::cerr << "[V] loading journal" << std::endl;
+
 				std::string md5in;
 				{
 					libmaus2::aio::InputStreamInstance ISI(journalfn);
@@ -814,13 +816,21 @@ struct SlurmControl
 
 				// check integrity
 				if ( md5data == md5in )
+				{
+					std::cerr << "[V] loaded journal" << std::endl;
 					return true;
+				}
 				else
-					return false;
+				{
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "checksum mismatch" << std::endl;
+					lme.finish();
+					throw lme;
+				}
 			}
 			catch(std::exception const & ex)
 			{
-				std::cerr << "[E] failed to load journal: " << std::endl;
+				std::cerr << "[E] failed to load journal: " << ex.what() << std::endl;
 				return false;
 			}
 		}
@@ -832,6 +842,8 @@ struct SlurmControl
 
 			try
 			{
+				std::cerr << "[V] applying journal" << std::endl;
+
 				// read data
 				std::vector < WriteContainerRequest > V;
 				bool const journalok = loadJournal(V,journalfn);
@@ -844,6 +856,8 @@ struct SlurmControl
 					cdlstream.sync();
 
 					libmaus2::aio::FileRemoval::removeFile(journalfn);
+
+					std::cerr << "[V] applyed journal with " << V.size() << " elements" << std::endl;
 
 					ok = true;
 				}
@@ -875,6 +889,8 @@ struct SlurmControl
 		{
 			try
 			{
+				std::cerr << "[V] writing journal" << std::endl;
+
 				// get data
 				std::string const data = serialiseVector(V);
 
@@ -899,11 +915,13 @@ struct SlurmControl
 					throw lme;
 				}
 
+				std::cerr << "[V] wrote journal" << std::endl;
+
 				return true;
 			}
 			catch(std::exception const & ex)
 			{
-				std::cerr << "[E] writeJournal:\n" << ex.what() << std::endl;
+				std::cerr << "[E] writeJournal failed:\n" << ex.what() << std::endl;
 				libmaus2::aio::FileRemoval::removeFile(journalfn);
 				return false;
 			}
@@ -912,6 +930,8 @@ struct SlurmControl
 		bool handleVectorFlush()
 		{
 			std::string const journalfn = cdl + ".journal";
+
+			std::cerr << "[V] flushing CDL vector" << std::endl;
 
 			if ( runok )
 			{
