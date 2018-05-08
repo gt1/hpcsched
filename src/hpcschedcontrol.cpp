@@ -952,7 +952,7 @@ struct SlurmControl
 		{
 			try
 			{
-				if ( ! libmaus2::util::GetFileSize::getFileSize(journalfn) )
+				if ( ! libmaus2::util::GetFileSize::fileExists(journalfn) )
 					return true;
 
 				return applyJournal(cdl,journalfn);
