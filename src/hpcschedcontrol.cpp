@@ -689,7 +689,7 @@ struct SlurmControl
 			deserialise(in);
 		}
 
-		void dispatch(std::iostream & cdlstream)
+		void dispatch(std::iostream & cdlstream) const
 		{
 			cdlstream.clear();
 			cdlstream.seekp(offset);
@@ -767,6 +767,7 @@ struct SlurmControl
 		libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & WCRQ;
 		libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream;
 		std::string const cdl;
+		std::string const journalfn;
 		std::vector < WriteContainerRequest > V;
 		bool runok;
 
@@ -779,7 +780,7 @@ struct SlurmControl
 			libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> & rWCRQ,
 			libmaus2::aio::InputOutputStreamInstance::shared_ptr_type & rcdlstream,
 			std::string const rcdl
-		) : WCRQ(rWCRQ), cdlstream(rcdlstream), cdl(rcdl), runok(true)
+		) : WCRQ(rWCRQ), cdlstream(rcdlstream), cdl(rcdl), journalfn(cdl + ".journal"), runok(true)
 		{
 
 		}
@@ -794,49 +795,283 @@ struct SlurmControl
 			return ostr.str();
 		}
 
-		static bool loadJournal(std::vector < WriteContainerRequest > & V, std::string const & journalfn)
+		static bool loadJournalData(std::string const journalfn, std::string & data)
 		{
 			try
 			{
+				uint64_t n = libmaus2::util::GetFileSize::getFileSize(journalfn);
+				libmaus2::autoarray::AutoArray<char> A(n,false);
+				libmaus2::aio::InputStreamInstance ISI(journalfn);
+				ISI.read(A.begin(),n);
+				data = std::string(A.begin(),A.end());
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to load journal data" << std::endl;
+				return false;
+			}
+		}
+
+		static bool parseJournalData(std::vector < WriteContainerRequest > & V, std::string & md5in, std::string const & journaldata)
+		{
+			try
+			{
+				std::istringstream ISI(journaldata);
+				uint64_t const n = libmaus2::util::NumberSerialisation::deserialiseNumber(ISI);
+				V.resize(n);
+				for ( uint64_t i = 0; i < n; ++i )
+					V[i].deserialise(ISI);
+				md5in = libmaus2::util::StringSerialisation::deserialiseString(ISI);
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to parse journal data" << std::endl;
+				return false;
+			}
+		}
+
+		static bool computeJournalMD5(std::string & md5data, std::vector < WriteContainerRequest > const & V)
+		{
+			try
+			{
+				libmaus2::util::MD5::md5(serialiseVector(V),md5data);
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to compute checksum for journal data:\n" << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		static bool checkJournalMD5(std::string const & md5data, std::string const & md5in)
+		{
+			try
+			{
+				if ( md5data != md5in )
+				{
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "[E] check mismatch " << md5data << " != " << md5in << std::endl;
+					lme.finish();
+					throw lme;
+				}
+
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] checksum mismatch journal data:\n" << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		static bool dispatchJournal(std::vector < WriteContainerRequest > const & V, std::string const & cdl)
+		{
+			try
+			{
+				libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream(
+					new libmaus2::aio::InputOutputStreamInstance(cdl,std::ios::in | std::ios::out | std::ios::binary)
+				);
+
+				// apply updates
+				for ( uint64_t i = 0; i < V.size(); ++i )
+				{
+					V[i].dispatch(*cdlstream);
+					if ( ! cdlstream )
+					{
+						libmaus2::exception::LibMausException lme;
+						lme.getStream() << "[E] failed to write update" << std::endl;
+						lme.finish();
+						throw lme;
+					}
+				}
+				cdlstream->flush();
+				if ( ! cdlstream )
+				{
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "[E] failed to write update (flush)" << std::endl;
+					lme.finish();
+					throw lme;
+				}
+
+				cdlstream.reset();
+
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to apply journal data:\n" << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		static bool removeJournal(std::string const & journalfn)
+		{
+			try
+			{
+				libmaus2::aio::FileRemoval::removeFile(journalfn);
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to delete journal:\n:" << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		static bool applyJournal(std::string const & cdl, std::string const & journalfn)
+		{
+			try
+			{
+				bool ok = true;
+
+				std::string journaldata;
+				std::string md5in;
+				std::string md5data;
+				std::vector < WriteContainerRequest > V;
+
+				ok = ok && loadJournalData(journalfn,journaldata);
+				ok = ok && parseJournalData(V, md5in, journaldata);
+				ok = ok && computeJournalMD5(md5data,V);
+				ok = ok && checkJournalMD5(md5in,md5data);
+				ok = ok && dispatchJournal(V,cdl);
+				ok = ok && removeJournal(journalfn);
+
+				return ok;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] applyJournal failed: " << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		static bool tryApplyJournal(std::string const & cdl, std::string const & journalfn)
+		{
+			try
+			{
+				if ( ! libmaus2::util::GetFileSize::getFileSize(journalfn) )
+					return true;
+
+				return applyJournal(cdl,journalfn);
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] tryApplyJournal failed: " << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		#if 0
+		enum journal_update_error
+		{
+			journal_update_error_none,
+			journal_update_error_memory,
+			journal_update_error_load,
+			journal_update_error_parse,
+			journal_update_error_checksum,
+			journal_update_error_update,
+			journal_update_error_unknown
+		};
+
+		static bool loadJournalData(std::string const journalfn, std::string & data)
+		{
+			try
+			{
+				uint64_t n = libmaus2::util::GetFileSize::getFileSize(journalfn);
+				libmaus2::autoarray::AutoArray<char> A(n,false);
+				libmaus2::aio::InputStreamInstance ISI(journalfn);
+				ISI.read(A.begin(),n);
+				data = std::string(A.begin(),A.end());
+				return true;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] failed to load journal data" << std::endl;
+				return false;
+			}
+		}
+
+
+		static journal_update_error loadJournal(std::vector < WriteContainerRequest > & V, std::string const & journalfn)
+		{
+			try
+			{
+				std::string journaldata;
+				bool const dataok = loadJournalData(journalfn,journaldata);
+
+				if ( ! dataok )
+					return journal_update_error_load;
+
 				std::cerr << "[V] loading journal" << std::endl;
 
 				std::string md5in;
+
+				try
 				{
-					libmaus2::aio::InputStreamInstance ISI(journalfn);
+					std::istringstream ISI(journaldata);
 					uint64_t const n = libmaus2::util::NumberSerialisation::deserialiseNumber(ISI);
 					V.resize(n);
 					for ( uint64_t i = 0; i < n; ++i )
 						V[i].deserialise(ISI);
 					md5in = libmaus2::util::StringSerialisation::deserialiseString(ISI);
 				}
+				catch(std::bad_alloc const & ex)
+				{
+					std::cerr << "[E] failed to parse journal data (bad_alloc)" << std::endl;
+					return journal_update_error_memory;
+				}
+				catch(std::exception const & ex)
+				{
+					std::cerr << "[E] failed to parse journal data" << std::endl;
+					return journal_update_error_parse;
+				}
 
 				// compute MD5 for data
 				std::string md5data;
-				libmaus2::util::MD5::md5(serialiseVector(V),md5data);
+
+				try
+				{
+					libmaus2::util::MD5::md5(serialiseVector(V),md5data);
+				}
+				catch(std::bad_alloc const & ex)
+				{
+					std::cerr << "[E] failed to parse journal data (bad_alloc on checksum)" << std::endl;
+					return journal_update_error_memory;
+				}
+				catch(std::exception const & ex)
+				{
+					std::cerr << "[E] failed to parse journal data (error on checksum):\n" << ex.what() << std::endl;
+					return journal_update_error_checksum;
+				}
 
 				// check integrity
 				if ( md5data == md5in )
 				{
 					std::cerr << "[V] loaded journal" << std::endl;
-					return true;
+					return journal_update_error_none;
 				}
 				else
 				{
-					libmaus2::exception::LibMausException lme;
-					lme.getStream() << "checksum mismatch" << std::endl;
-					lme.finish();
-					throw lme;
+					std::cerr << "[E] journal checksum mismatch" << std::endl;
+					return journal_update_error_checksum;
 				}
+			}
+			catch(std::bad_alloc const & ex)
+			{
+				return journal_update_error_memory;
 			}
 			catch(std::exception const & ex)
 			{
 				std::cerr << "[E] failed to load journal: " << ex.what() << std::endl;
-				return false;
+				return journal_update_error_unknown;
 			}
 		}
 
 		// apply journal
-		static bool applyJournal(std::iostream & cdlstream, std::string const & journalfn)
+		static journal_update_error applyJournal(std::iostream & cdlstream, std::string const & journalfn)
 		{
 			bool ok = false;
 
@@ -846,24 +1081,61 @@ struct SlurmControl
 
 				// read data
 				std::vector < WriteContainerRequest > V;
-				bool const journalok = loadJournal(V,journalfn);
+				journal_update_error const journalok = loadJournal(V,journalfn);
 
-				if ( journalok )
+				switch ( journalok )
 				{
-					// apply journal
-					for ( uint64_t i = 0; i < V.size(); ++i )
-						V[i].dispatch(cdlstream);
-					cdlstream.sync();
+					case journal_update_error_none:
+					{
+						try
+						{
+							// apply journal
+							for ( uint64_t i = 0; i < V.size(); ++i )
+								V[i].dispatch(cdlstream);
+							cdlstream.sync();
 
-					libmaus2::aio::FileRemoval::removeFile(journalfn);
+							libmaus2::aio::FileRemoval::removeFile(journalfn);
 
-					std::cerr << "[V] applyed journal with " << V.size() << " elements" << std::endl;
+							std::cerr << "[V] applyed journal with " << V.size() << " elements" << std::endl;
 
-					ok = true;
+							return journal_update_error_none;
+						}
+						catch(std::exception const & ex)
+						{
+							std::cerr << "[E] error applying journal updates:\n" << ex.what() << std::endl;
+							return journal_update_error_update;
+						}
+					}
+					case journal_update_error_memory:
+					case journal_update_error_load:
+					{
+						return journalok;
+					}
+					case journal_update_error_parse:
+					{
+						// remove defective journal file
+						libmaus2::aio::FileRemoval::removeFile(journalfn);
+						return journalok;
+					}
+
+				}
+				if ( journalok == journal_update_error_none )
+				{
 				}
 				else
 				{
-					libmaus2::aio::FileRemoval::removeFile(journalfn);
+					switch ( journalok )
+					{
+						// this should not happen
+						case journal_update_error_none:
+							assert(false);
+							break;
+						// unable to load journal, may be input error
+						case journal_update_error_load:
+							return false;
+							break;
+						libmaus2::aio::FileRemoval::removeFile(journalfn);
+					}
 				}
 			}
 			catch(std::exception const & ex)
@@ -883,9 +1155,10 @@ struct SlurmControl
 
 			return applyJournal(*cdlstream,journalfn);
 		}
+		#endif
 
 		// write journal to disk
-		bool writeJournal(std::string const & journalfn)
+		bool writeJournal()
 		{
 			try
 			{
@@ -894,12 +1167,11 @@ struct SlurmControl
 				// get data
 				std::string const data = serialiseVector(V);
 
-				// clear vector
-				V.resize(0);
-
+				// compute checksum
 				std::string md5data;
 				libmaus2::util::MD5::md5(data,md5data);
 
+				// write data
 				libmaus2::aio::OutputStreamInstance::unique_ptr_type OSI(new libmaus2::aio::OutputStreamInstance(journalfn));
 				OSI->write(data.c_str(),data.size());
 				libmaus2::util::StringSerialisation::serialiseString(*OSI,md5data);
@@ -915,6 +1187,8 @@ struct SlurmControl
 					throw lme;
 				}
 
+				OSI.reset();
+
 				std::cerr << "[V] wrote journal" << std::endl;
 
 				return true;
@@ -929,19 +1203,52 @@ struct SlurmControl
 
 		bool handleVectorFlush()
 		{
-			std::string const journalfn = cdl + ".journal";
-
-			std::cerr << "[V] flushing CDL vector" << std::endl;
-
 			if ( runok )
 			{
-				bool ok = true;
+				std::cerr << "[V] flushing CDL vector to " << journalfn << std::endl;
 
-				ok = ok && writeJournal(journalfn);
-				ok = ok && applyJournal(*cdlstream,journalfn);
+				bool ok = writeJournal();
+
+				// if we managed to write the journal
+				if ( ok )
+				{
+					try
+					{
+						// apply updates
+						for ( uint64_t i = 0; i < V.size(); ++i )
+						{
+							V[i].dispatch(*cdlstream);
+							if ( ! cdlstream )
+							{
+								libmaus2::exception::LibMausException lme;
+								lme.getStream() << "[E] failed to write update" << std::endl;
+								lme.finish();
+								throw lme;
+							}
+						}
+						cdlstream->flush();
+						if ( ! cdlstream )
+						{
+							libmaus2::exception::LibMausException lme;
+							lme.getStream() << "[E] failed to write update (flush)" << std::endl;
+							lme.finish();
+							throw lme;
+						}
+
+						libmaus2::aio::FileRemoval::removeFile(journalfn);
+					}
+					catch(std::exception const & ex)
+					{
+						std::cerr << "[E] failed to apply updates: " << ex.what() << std::endl;
+						ok = false;
+					}
+
+				}
 
 				runok = runok && ok;
 			}
+
+			V.resize(0);
 
 			return runok;
 		}
@@ -1726,6 +2033,15 @@ int hpcschedcontrol(libmaus2::util::ArgParser const & arg)
 
 	std::string const cdl = arg[0];
 	std::string const cdlmeta = cdl + ".meta";
+	std::string const cdljournal = cdl + ".journal";
+
+	bool const journalok = SlurmControl::WCRQWriterThread::tryApplyJournal(cdl,cdljournal);
+
+	if ( ! journalok )
+	{
+		std::cerr << "[E] failed to replay journal, please check error messages" << std::endl;
+		return EXIT_FAILURE;
+	}
 
 	if ( ! libmaus2::util::GetFileSize::fileExists(cdlmeta) )
 	{
