@@ -704,11 +704,77 @@ struct SlurmControl
 			return out;
 		}
 
+		std::string serialise() const
+		{
+			std::ostringstream ostr;
+			serialise(ostr);
+			return ostr.str();
+		}
+
+		std::ostream & serialiseWithChecksum(std::ostream & ostr) const
+		{
+			std::string const s = serialise();
+			ostr.write(s.c_str(),s.size());
+
+			std::string c;
+			libmaus2::util::MD5::md5(s,c);
+			libmaus2::util::StringSerialisation::serialiseString(ostr,c);
+
+			ostr.flush();
+
+			return ostr;
+		}
+
+		void serialiseWithChecksum(std::string const & fn) const
+		{
+			libmaus2::aio::OutputStreamInstance OSI(fn);
+			serialiseWithChecksum(OSI);
+		}
+
 		std::istream & deserialise(std::istream & in)
 		{
 			object.deserialise(in);
 			offset = libmaus2::util::NumberSerialisation::deserialiseNumber(in);
 			return in;
+		}
+
+		bool deserialiseWithChecksum(std::istream & in)
+		{
+			try
+			{
+				deserialise(in);
+				std::string const c_in = libmaus2::util::StringSerialisation::deserialiseString(in);
+				std::string c;
+
+				libmaus2::util::MD5::md5(serialise(),c);
+
+				return c == c_in;
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] " << ex.what() << std::endl;
+				return false;
+			}
+		}
+
+		static bool deserialiseWithChecksumStatic(std::istream & in)
+		{
+			WriteContainerRequest WCR;
+			return WCR.deserialiseWithChecksum(in);
+		}
+
+		static bool deserialiseWithChecksum(std::string const & in)
+		{
+			try
+			{
+				libmaus2::aio::InputStreamInstance ISI(in);
+				return deserialiseWithChecksumStatic(ISI);
+			}
+			catch(std::exception const & ex)
+			{
+				std::cerr << "[E] " << ex.what() << std::endl;
+				return false;
+			}
 		}
 	};
 
@@ -760,6 +826,7 @@ struct SlurmControl
 	libmaus2::aio::InputOutputStreamInstance metastream;
 	libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream;
 
+	#if 0
 	libmaus2::parallel::TerminatableSynchronousQueue<WriteContainerRequest> WCRQ;
 
 	struct WCRQWriterThread : public libmaus2::parallel::PosixThread
@@ -1279,6 +1346,7 @@ struct SlurmControl
 	};
 
 	WCRQWriterThread WCRQT;
+	#endif
 
 	static void writeJobDescription(
 		std::string const & fn,
@@ -1479,7 +1547,6 @@ struct SlurmControl
 		restartSet.insert(slotid);
 	}
 
-
 	void writeContainer(uint64_t const i)
 	{
 		// serialise object to string
@@ -1497,9 +1564,37 @@ struct SlurmControl
 		// get offset in file
 		uint64_t const offset = CDL.getOffset(i).first;
 
-		// enque write request
+		// instantiate request
 		WriteContainerRequest W(CD,offset);
+
+		// get name of journal on disk
+		std::string const journalname = getJournalName();
+
+		// serialise request with checksum
+		W.serialiseWithChecksum(journalname);
+
+		// see whether we can read it back with checksum correct
+		bool const ok = WriteContainerRequest::deserialiseWithChecksum(journalname);
+
+		// if not then fail
+		if ( ! ok )
+		{
+			libmaus2::exception::LibMausException lme;
+			lme.getStream() << "[E] failed to read back journal entry" << std::endl;
+			lme.finish();
+			throw lme;
+		}
+
+		// update on disk information
+		W.dispatch(*cdlstream);
+		cdlstream->flush();
+
+		libmaus2::aio::FileRemoval::removeFile(journalname);
+
+		#if 0
+		// enque write request
 		WCRQ.enque(W);
+		#endif
 	}
 
 	void handleSuccessfulCommand(
@@ -1616,6 +1711,16 @@ struct SlurmControl
 		}
 	}
 
+	static std::string getJournalName(std::string const & cdl)
+	{
+		return cdl + ".journal";
+	}
+
+	std::string getJournalName()
+	{
+		return getJournalName(cdl);
+	}
+
 	SlurmControl(
 		std::string const & rtmpfilebase,
 		uint64_t const rworkertime,
@@ -1664,9 +1769,11 @@ struct SlurmControl
 	  failed(false),
 	  Vreq(computeStartRequests(rarg)),
 	  metastream(cdl + ".meta",std::ios::in | std::ios::out | std::ios::binary),
-	  cdlstream(new libmaus2::aio::InputOutputStreamInstance(cdl,std::ios::in | std::ios::out | std::ios::binary)),
+	  cdlstream(new libmaus2::aio::InputOutputStreamInstance(cdl,std::ios::in | std::ios::out | std::ios::binary))
+	  #if 0
 	  WCRQ(),
 	  WCRQT(WCRQ,cdlstream,cdl)
+	  #endif
 	{
 
 		metastream.seekp(0,std::ios::end);
@@ -1680,13 +1787,17 @@ struct SlurmControl
 		countUnfinished();
 		enqueUnfinished();
 
+		#if 0
 		WCRQT.start();
+		#endif
 	}
 
 	~SlurmControl()
 	{
+		#if 0
 		WCRQ.terminate();
 		WCRQT.join();
+		#endif
 	}
 
 	int process()
@@ -2033,8 +2144,26 @@ int hpcschedcontrol(libmaus2::util::ArgParser const & arg)
 
 	std::string const cdl = arg[0];
 	std::string const cdlmeta = cdl + ".meta";
-	std::string const cdljournal = cdl + ".journal";
+	std::string const cdljournal = SlurmControl::getJournalName(cdl);
 
+	// check for journal
+	if ( libmaus2::util::GetFileSize::fileExists(cdljournal) )
+	{
+		SlurmControl::WriteContainerRequest WCR;
+		bool const ok = WCR.deserialiseWithChecksum(cdljournal);
+
+		if ( ok )
+		{
+			libmaus2::aio::InputOutputStreamInstance::shared_ptr_type cdlstream(
+				new libmaus2::aio::InputOutputStreamInstance(cdl,std::ios::in | std::ios::out | std::ios::binary)
+			);
+			WCR.dispatch(*cdlstream);
+		}
+
+		libmaus2::aio::FileRemoval::removeFile(cdljournal);
+	}
+
+	#if 0
 	bool const journalok = SlurmControl::WCRQWriterThread::tryApplyJournal(cdl,cdljournal);
 
 	if ( ! journalok )
@@ -2042,6 +2171,7 @@ int hpcschedcontrol(libmaus2::util::ArgParser const & arg)
 		std::cerr << "[E] failed to replay journal, please check error messages" << std::endl;
 		return EXIT_FAILURE;
 	}
+	#endif
 
 	if ( ! libmaus2::util::GetFileSize::fileExists(cdlmeta) )
 	{
