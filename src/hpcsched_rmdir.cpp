@@ -38,6 +38,10 @@ void srmdir(std::string const & sdir)
 
 			switch ( error )
 			{
+				// return success if directory to be removed does not exist
+				case ENOENT:
+					r = 0;
+					break;
 				case EINTR:
 				case EAGAIN:
 					break;
