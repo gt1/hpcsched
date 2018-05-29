@@ -23,6 +23,38 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+bool isDir(std::string const & sdir)
+{
+	int r = -1;
+	struct stat sb;
+
+	while ( r < 0 )
+	{
+		r = stat(sdir.c_str(),&sb);
+
+		if ( r < 0 )
+		{
+			int const error = errno;
+
+			switch ( error )
+			{
+				case EAGAIN:
+				case EINTR:
+					break;
+				default:
+				{
+					libmaus2::exception::LibMausException lme;
+					lme.getStream() << "[E] mkdir calling stat(" << sdir << "): " << strerror(error) << std::endl;
+					lme.finish();
+					throw lme;
+				}
+			}
+		}
+	}
+
+	return S_ISDIR(sb.st_mode);
+}
+
 void smkdir(std::string const & sdir)
 {
 	int r = -1;
@@ -37,6 +69,21 @@ void smkdir(std::string const & sdir)
 
 			switch ( error )
 			{
+				case EEXIST:
+				{
+					if ( isDir(sdir) )
+					{
+						r = 0;
+						break;
+					}
+					else
+					{
+						libmaus2::exception::LibMausException lme;
+						lme.getStream() << "[E] mkdir(" << sdir << "): " << strerror(error) << std::endl;
+						lme.finish();
+						throw lme;
+					}
+				}
 				case EINTR:
 				case EAGAIN:
 					break;
